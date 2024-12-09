@@ -4,8 +4,8 @@ import (
 	"gofr.dev/pkg/gofr"
 
 	"gofr.dev/cli/gofr/bootstrap"
-	"gofr.dev/cli/gofr/wrap"
 	"gofr.dev/cli/gofr/migration"
+	"gofr.dev/cli/gofr/wrap"
 )
 
 func main() {

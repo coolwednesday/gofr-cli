@@ -2,8 +2,8 @@ package wrap
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"strings"
@@ -11,6 +11,16 @@ import (
 
 	"github.com/emicklei/proto"
 	"gofr.dev/pkg/gofr"
+)
+
+const filePerm = 0644
+
+var (
+	ErrNoProtoFile        = errors.New("proto file path is required")
+	ErrOpeningProtoFile   = errors.New("error opening the proto file")
+	ErrFailedToParseProto = errors.New("failed to parse proto file")
+	ErrGeneratingWrapper  = errors.New("error generating the wrapper code from the proto file")
+	ErrWritingWrapperFile = errors.New("error writing the generated wrapper to the file")
 )
 
 // ServiceMethod represents a method in a proto service.
@@ -27,7 +37,7 @@ type ProtoService struct {
 	Methods []ServiceMethod
 }
 
-// WrapperData is the template data structure
+// WrapperData is the template data structure.
 type WrapperData struct {
 	Package  string
 	Service  string
@@ -38,25 +48,97 @@ type WrapperData struct {
 func GenerateWrapper(ctx *gofr.Context) (any, error) {
 	protoPath := ctx.Param("proto")
 	if protoPath == "" {
-		return nil, fmt.Errorf("proto file path is required")
+		return nil, ErrNoProtoFile
 	}
 
-	// Open the proto file
 	file, err := os.Open(protoPath)
 	if err != nil {
-		log.Fatalf("Failed to open proto file: %v", err)
+		ctx.Errorf("Failed to open proto file: %v", err)
+
+		return nil, ErrOpeningProtoFile
 	}
+
 	defer file.Close()
 
-	// Parse the proto file
 	parser := proto.NewParser(file)
+
 	definition, err := parser.Parse()
 	if err != nil {
-		log.Fatalf("Failed to parse proto file: %v", err)
+		ctx.Errorf("Failed to parse proto file: %v", err)
+
+		return nil, ErrFailedToParseProto
 	}
 
-	// Extract package name
-	var packageName, projectPath string
+	var (
+		// Extracting package and project path from go_package option.
+		packageName, projectPath = getPackageAndProject(definition)
+		// Extract the services.
+		services = getServices(definition)
+	)
+
+	for _, service := range services {
+		wrapperData := WrapperData{
+			Package:  packageName,
+			Service:  service.Name,
+			Methods:  service.Methods,
+			Requests: uniqueRequestTypes(service.Methods),
+		}
+
+		generatedCode := generateWrapperCode(ctx, &wrapperData)
+		if generatedCode == "" {
+			return nil, ErrGeneratingWrapper
+		}
+
+		outputFilePath := fmt.Sprintf("%s/%s.gofr.go", projectPath, strings.ToLower(service.Name))
+
+		err := os.WriteFile(outputFilePath, []byte(generatedCode), filePerm)
+		if err != nil {
+			ctx.Errorf("Failed to write file %s: %v", outputFilePath, err)
+
+			return nil, ErrWritingWrapperFile
+		}
+
+		fmt.Printf("Generated wrapper for service %s at %s\n", service.Name, outputFilePath)
+	}
+
+	return "Successfully generated all wrappers for gRPC services", nil
+}
+
+// Extract unique request types from methods.
+func uniqueRequestTypes(methods []ServiceMethod) []string {
+	requests := make(map[string]bool)
+	req := make([]string, 0)
+
+	for _, method := range methods {
+		if !method.Streaming {
+			requests[method.Request] = true
+		}
+	}
+
+	for method := range requests {
+		req = append(req, method)
+	}
+
+	return req
+}
+
+// Generate wrapper code using the template.
+func generateWrapperCode(ctx *gofr.Context, data *WrapperData) string {
+	var buf bytes.Buffer
+
+	tmplInstance := template.Must(template.New("wrapper").Parse(tmpl))
+
+	err := tmplInstance.Execute(&buf, data)
+	if err != nil {
+		ctx.Errorf("Template execution failed: %v", err)
+
+		return ""
+	}
+
+	return buf.String()
+}
+
+func getPackageAndProject(definition *proto.Proto) (projectPath, packageName string) {
 	proto.Walk(definition,
 		proto.WithOption(func(opt *proto.Option) {
 			if opt.Name == "go_package" {
@@ -66,8 +148,12 @@ func GenerateWrapper(ctx *gofr.Context) (any, error) {
 		}),
 	)
 
-	// Extract services and methods
+	return projectPath, packageName
+}
+
+func getServices(definition *proto.Proto) []ProtoService {
 	var services []ProtoService
+
 	proto.Walk(definition,
 		proto.WithService(func(s *proto.Service) {
 			service := ProtoService{Name: s.Name}
@@ -88,176 +174,5 @@ func GenerateWrapper(ctx *gofr.Context) (any, error) {
 		}),
 	)
 
-	// Generate code for each service
-	for _, service := range services {
-
-		wrapperData := WrapperData{
-			Package:  packageName,
-			Service:  service.Name,
-			Methods:  service.Methods,
-			Requests: uniqueRequestTypes(service.Methods),
-		}
-
-		generatedCode := generateWrapperCode(wrapperData)
-
-		// Write the generated code to a file
-		outputFilePath := fmt.Sprintf("%s/%s.gofr.go", projectPath, strings.ToLower(service.Name))
-		err := os.WriteFile(outputFilePath, []byte(generatedCode), 0644)
-		if err != nil {
-			log.Fatalf("Failed to write file %s: %v", outputFilePath, err)
-		}
-
-		fmt.Printf("Generated wrapper for service %s at %s\n", service.Name, outputFilePath)
-	}
-
-	return "Successfully generated all wrappers for gRPC services", nil
-}
-
-// Extract unique request types from methods
-func uniqueRequestTypes(methods []ServiceMethod) []string {
-	requests := make(map[string]bool)
-	for _, method := range methods {
-		if !method.Streaming {
-			requests[method.Request] = true
-		}
-	}
-
-	req := make([]string, 0)
-	for method, _ := range requests {
-		req = append(req, method)
-	}
-
-	return req
-}
-
-// Generate wrapper code using the template
-func generateWrapperCode(data WrapperData) string {
-	tmpl := `// Code generated by gofr.dev/cli/gofr. DO NOT EDIT.
-package {{ .Package }}
-
-import (
-	"context"
-	"fmt"
-	"reflect"
-
-	"gofr.dev/pkg/gofr"
-	"gofr.dev/pkg/gofr/container"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-)
-
-type {{ .Service }}ServerWithGofr interface {
-{{- range .Methods }}
-	{{- if not .Streaming }}
-	{{ .Name }}(*gofr.Context) (any, error)
-	{{- end }}
-{{- end }}
-}
-
-type {{ .Service }}ServerWrapper struct {
-	{{ .Service }}Server
-	Container *container.Container
-	server    {{ .Service }}ServerWithGofr
-}
-
-{{- range .Methods }}
-{{- if not .Streaming }}
-func (h *{{ $.Service }}ServerWrapper) {{ .Name }}(ctx context.Context, req *{{ .Request }}) (*{{ .Response }}, error) {
-	gctx := h.GetGofrContext(ctx, &{{ .Request }}Wrapper{ctx: ctx, {{ .Request }}: req})
-
-	res, err := h.server.{{ .Name }}(gctx)
-
-	if err != nil {
-		return nil, err
-	}
-
-	resp, ok := res.(*{{ .Response }})
-	if !ok {
-		return nil, status.Errorf(codes.Unknown, "unexpected response type %T", res)
-	}
-
-	return resp, nil
-}
-{{- end }}
-
-{{- end }}
-
-func (h *{{ .Service }}ServerWrapper) mustEmbedUnimplemented{{ .Service }}Server() {}
-
-func Register{{ .Service }}ServerWithGofr(s grpc.ServiceRegistrar, srv {{ .Service }}ServerWithGofr) {
-	wrapper := &{{ .Service }}ServerWrapper{server: srv}
-	Register{{ .Service }}Server(s, wrapper)
-}
-
-func (h *{{ .Service }}ServerWrapper) GetGofrContext(ctx context.Context, req gofr.Request) *gofr.Context {
-	return &gofr.Context{
-		Context:   ctx,
-		Container: h.Container,
-		Request:   req,
-	}
-}
-
-{{- range $request := .Requests }}
-type {{ $request }}Wrapper struct {
-	ctx context.Context
-	*{{ $request }}
-}
-
-func (h *{{ $request }}Wrapper) Context() context.Context {
-	return h.ctx
-}
-
-func (h *{{ $request }}Wrapper) Param(s string) string {
-	return ""
-}
-
-func (h *{{ $request }}Wrapper) PathParam(s string) string {
-	return ""
-}
-
-func (h *{{ $request }}Wrapper) Bind(p interface{}) error {
-	ptr := reflect.ValueOf(p)
-	if ptr.Kind() != reflect.Ptr {
-		return fmt.Errorf("expected a pointer, got %T", p)
-	}
-
-	hValue := reflect.ValueOf(h.InfoRequest).Elem()
-	ptrValue := reflect.ValueOf(ptr).Elem()
-
-	// Ensure we can set exported fields (skip unexported fields)
-	for i := 0; i < hValue.NumField(); i++ {
-		field := hValue.Type().Field(i)
-		// Skip the fields we don't want to copy (state, sizeCache, unknownFields)
-		if field.Name == "state" || field.Name == "sizeCache" || field.Name == "unknownFields" {
-			continue
-		}
-
-		if field.IsExported() {
-			ptrValue.Field(i).Set(hValue.Field(i))
-		}
-	}
-	
-	return nil
-}
-
-func (h *{{ $request }}Wrapper) HostName() string {
-	return ""
-}
-
-func (h *{{ $request }}Wrapper) Params(s string) []string {
-	return nil
-}
-
-{{- end }}
-`
-
-	var buf bytes.Buffer
-	tmplInstance := template.Must(template.New("wrapper").Parse(tmpl))
-	err := tmplInstance.Execute(&buf, data)
-	if err != nil {
-		log.Fatalf("Template execution failed: %v", err)
-	}
-
-	return buf.String()
+	return services
 }

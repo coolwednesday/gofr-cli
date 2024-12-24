@@ -90,8 +90,8 @@ func (h *{{ $request }}Wrapper) Bind(p interface{}) error {
 		return fmt.Errorf("expected a pointer, got %T", p)
 	}
 
-	hValue := reflect.ValueOf(h.InfoRequest).Elem()
-	ptrValue := reflect.ValueOf(ptr).Elem()
+	hValue := reflect.ValueOf(h.{{ $request }}).Elem()
+	ptrValue := ptr.Elem()
 
 	// Ensure we can set exported fields (skip unexported fields)
 	for i := 0; i < hValue.NumField(); i++ {
@@ -117,5 +117,37 @@ func (h *{{ $request }}Wrapper) Params(s string) []string {
 	return nil
 }
 
+{{- end }}
+`
+
+const tmpl2 = `// Package {{ .Package }} provides a template for creating gRPC server implementations 
+// using the GoFr framework. Modify this template to suit your specific use case.
+
+package {{ .Package }}
+
+import "gofr.dev/pkg/gofr"
+
+//
+// Register the gRPC service in your app using the following code in your main.go:
+//
+// grpc.Register{{ $.Service }}ServerWithGofr(app, &grpc.{{ $.Service }}GoFrServer{})
+//
+// {{ $.Service }}GoFrServer defines the gRPC server implementation.
+// Customize the struct with required dependencies and fields as needed.
+
+type {{ $.Service }}GoFrServer struct {
+}
+
+{{- range .Methods }}
+func (s *{{ $.Service }}GoFrServer) {{ .Name }}(ctx *gofr.Context) (any, error) {
+// Uncomment and use the following code if you need to bind the request payload
+// request := {{ .Request }}{}
+// err := ctx.Bind(&request)
+// if err != nil {
+//     return nil, err
+// }
+
+return &{{ .Response }}{}, nil
+}
 {{- end }}
 `

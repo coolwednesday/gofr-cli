@@ -71,7 +71,7 @@ func GenerateWrapper(ctx *gofr.Context) (any, error) {
 
 	var (
 		// Extracting package and project path from go_package option.
-		packageName, projectPath = getPackageAndProject(definition)
+		projectPath, packageName = getPackageAndProject(definition)
 		// Extract the services.
 		services = getServices(definition)
 	)
@@ -92,6 +92,19 @@ func GenerateWrapper(ctx *gofr.Context) (any, error) {
 		outputFilePath := fmt.Sprintf("%s/%s.gofr.go", projectPath, strings.ToLower(service.Name))
 
 		err := os.WriteFile(outputFilePath, []byte(generatedCode), filePerm)
+		if err != nil {
+			ctx.Errorf("Failed to write file %s: %v", outputFilePath, err)
+
+			return nil, ErrWritingWrapperFile
+		}
+
+		generatedgRPCCode := generategRPCCode(ctx, &wrapperData)
+		if generatedgRPCCode == "" {
+			return nil, ErrGeneratingWrapper
+		}
+
+		outputFilePath = fmt.Sprintf("%s/%sServer.go", projectPath, strings.ToLower(service.Name))
+		err = os.WriteFile(outputFilePath, []byte(generatedgRPCCode), filePerm)
 		if err != nil {
 			ctx.Errorf("Failed to write file %s: %v", outputFilePath, err)
 
@@ -138,11 +151,26 @@ func generateWrapperCode(ctx *gofr.Context, data *WrapperData) string {
 	return buf.String()
 }
 
+// Generate wrapper code using the template.
+func generategRPCCode(ctx *gofr.Context, data *WrapperData) string {
+	var buf bytes.Buffer
+
+	tmplInstance := template.Must(template.New("wrapper").Parse(tmpl2))
+
+	err := tmplInstance.Execute(&buf, data)
+	if err != nil {
+		ctx.Errorf("Template execution failed: %v", err)
+		return ""
+	}
+
+	return buf.String()
+}
+
 func getPackageAndProject(definition *proto.Proto) (projectPath, packageName string) {
 	proto.Walk(definition,
 		proto.WithOption(func(opt *proto.Option) {
 			if opt.Name == "go_package" {
-				projectPath = opt.Constant.Source[:len(opt.Constant.Source)-1]
+				projectPath = opt.Constant.Source
 				packageName = path.Base(opt.Constant.Source)
 			}
 		}),

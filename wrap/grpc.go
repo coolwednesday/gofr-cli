@@ -104,6 +104,7 @@ func GenerateWrapper(ctx *gofr.Context) (any, error) {
 		}
 
 		outputFilePath = fmt.Sprintf("%s/%sServer.go", projectPath, strings.ToLower(service.Name))
+
 		err = os.WriteFile(outputFilePath, []byte(generatedgRPCCode), filePerm)
 		if err != nil {
 			ctx.Errorf("Failed to write file %s: %v", outputFilePath, err)
@@ -139,7 +140,7 @@ func uniqueRequestTypes(methods []ServiceMethod) []string {
 func generateWrapperCode(ctx *gofr.Context, data *WrapperData) string {
 	var buf bytes.Buffer
 
-	tmplInstance := template.Must(template.New("wrapper").Parse(tmpl))
+	tmplInstance := template.Must(template.New("wrapper").Parse(wrapperTemplate))
 
 	err := tmplInstance.Execute(&buf, data)
 	if err != nil {
@@ -155,7 +156,7 @@ func generateWrapperCode(ctx *gofr.Context, data *WrapperData) string {
 func generategRPCCode(ctx *gofr.Context, data *WrapperData) string {
 	var buf bytes.Buffer
 
-	tmplInstance := template.Must(template.New("wrapper").Parse(tmpl2))
+	tmplInstance := template.Must(template.New("wrapper").Parse(serverTemplate))
 
 	err := tmplInstance.Execute(&buf, data)
 	if err != nil {

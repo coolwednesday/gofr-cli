@@ -16,11 +16,13 @@ import (
 const filePerm = 0644
 
 var (
-	ErrNoProtoFile        = errors.New("proto file path is required")
-	ErrOpeningProtoFile   = errors.New("error opening the proto file")
-	ErrFailedToParseProto = errors.New("failed to parse proto file")
-	ErrGeneratingWrapper  = errors.New("error generating the wrapper code from the proto file")
-	ErrWritingWrapperFile = errors.New("error writing the generated wrapper to the file")
+	ErrNoProtoFile              = errors.New("proto file path is required")
+	ErrOpeningProtoFile         = errors.New("error opening the proto file")
+	ErrFailedToParseProto       = errors.New("failed to parse proto file")
+	ErrGeneratingWrapper        = errors.New("error generating the wrapper code from the proto file")
+	ErrWritingWrapperFile       = errors.New("error writing the generated wrapper to the file")
+	ErrGeneratingServerTemplate = errors.New("error generating the gRPC server file template")
+	ErrWritingServerTemplate    = errors.New("error writing the generated server template to the file")
 )
 
 // ServiceMethod represents a method in a proto service.
@@ -98,9 +100,11 @@ func GenerateWrapper(ctx *gofr.Context) (any, error) {
 			return nil, ErrWritingWrapperFile
 		}
 
+		fmt.Printf("Generated wrapper for service %s at %s\n", service.Name, outputFilePath)
+
 		generatedgRPCCode := generategRPCCode(ctx, &wrapperData)
 		if generatedgRPCCode == "" {
-			return nil, ErrGeneratingWrapper
+			return nil, ErrGeneratingServerTemplate
 		}
 
 		outputFilePath = fmt.Sprintf("%s/%sServer.go", projectPath, strings.ToLower(service.Name))
@@ -109,10 +113,10 @@ func GenerateWrapper(ctx *gofr.Context) (any, error) {
 		if err != nil {
 			ctx.Errorf("Failed to write file %s: %v", outputFilePath, err)
 
-			return nil, ErrWritingWrapperFile
+			return nil, ErrWritingServerTemplate
 		}
 
-		fmt.Printf("Generated wrapper for service %s at %s\n", service.Name, outputFilePath)
+		fmt.Printf("Generated server template for service %s at %s\n", service.Name, outputFilePath)
 	}
 
 	return "Successfully generated all wrappers for gRPC services", nil

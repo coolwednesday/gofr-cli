@@ -91,7 +91,7 @@ func GenerateWrapper(ctx *gofr.Context) (any, error) {
 			return nil, ErrGeneratingWrapper
 		}
 
-		outputFilePath := fmt.Sprintf("%s/%s.gofr.go", projectPath, strings.ToLower(service.Name))
+		outputFilePath := path.Join(projectPath, fmt.Sprintf("%s.gofr.go", strings.ToLower(service.Name)))
 
 		err := os.WriteFile(outputFilePath, []byte(generatedCode), filePerm)
 		if err != nil {
@@ -107,7 +107,7 @@ func GenerateWrapper(ctx *gofr.Context) (any, error) {
 			return nil, ErrGeneratingServerTemplate
 		}
 
-		outputFilePath = fmt.Sprintf("%s/%sServer.go", projectPath, strings.ToLower(service.Name))
+		outputFilePath = path.Join(projectPath, fmt.Sprintf("%sServer.go", strings.ToLower(service.Name)))
 
 		err = os.WriteFile(outputFilePath, []byte(generatedgRPCCode), filePerm)
 		if err != nil {

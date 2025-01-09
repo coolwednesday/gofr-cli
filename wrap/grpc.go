@@ -73,7 +73,7 @@ func GenerateWrapper(ctx *gofr.Context) (any, error) {
 
 	var (
 		// Extracting package and project path from go_package option.
-		projectPath, packageName = getPackageAndProject(definition)
+		projectPath, packageName = getPackageAndProject(definition, protoPath)
 		// Extract the services.
 		services = getServices(definition)
 	)
@@ -171,11 +171,11 @@ func generategRPCCode(ctx *gofr.Context, data *WrapperData) string {
 	return buf.String()
 }
 
-func getPackageAndProject(definition *proto.Proto) (projectPath, packageName string) {
+func getPackageAndProject(definition *proto.Proto, protoPath string) (projectPath, packageName string) {
 	proto.Walk(definition,
 		proto.WithOption(func(opt *proto.Option) {
 			if opt.Name == "go_package" {
-				projectPath = opt.Constant.Source
+				projectPath = path.Dir(protoPath)
 				packageName = path.Base(opt.Constant.Source)
 			}
 		}),

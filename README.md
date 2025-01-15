@@ -1,4 +1,3 @@
-this is the readme.md i have written for gofr cli
 <h1 style="text-align: center; font-size: 100px; font-weight: 500;">
     <i>Go</i>Fr Command Line Interface
 </h1>

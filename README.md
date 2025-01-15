@@ -35,7 +35,7 @@ To get started with GoFr CLI, use the below commands
 
 ```bash
   go install gofr.dev/cli/gofr@latest
-````
+```
 
 To check the installation:
 ```bash
@@ -56,6 +56,12 @@ To securely clone the GoFr CLI repository, you can use HTTPS or SSH:
   git@github.com:gofr-dev/gofr-cli.git
 ```
 ---
+## 🤝 **Contributing**
+
+Contributions are welcome! Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines.
+
+---
+
 ### 🎁 **Get a GoFr T-Shirt & Stickers!**
 
 If your PR is merged, or if you contribute by writing articles or promoting GoFr CLI, we invite you to fill out [this form](https://forms.gle/R1Yz7ZzY3U5WWTgy5) to claim your GoFr merchandise as a token of our appreciation!

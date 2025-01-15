@@ -6,7 +6,6 @@
 <img align="center" width="300" alt="logo" src="https://github.com/gofr-dev/gofr/assets/44036979/916fe7b1-42fb-4af1-9e0b-4a7a064c243c">
 </p>
 
-<h2 align="center" style="font-size: 28px;"><b>GoFr Command Line Interface </b></h2>
 
 <div align="center">
 <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge" alt="Apache 2.0 License"></a>
@@ -15,20 +14,21 @@
 
 ## ⚙️ **What is GoFr CLI?**
 GoFr CLI is the command line tool for initializing projects and performing tasks in accordance with GoFr framework.
-Users can use this CLI from initializing a simple hello world program using GoFr to writing migrations for your databases.
 
 ---
 
 ## 💡 Key Features
-
-1. **✨ `init`** - Initialize a new GoFr project with the basic setup.
-2. **📦 `version`** - Check the current version of the GoFr CLI tool and ensure you're up to date.
-3. **🛠️ `migrate create`** - Create new database migrations to modify your schema or data structure.
-4. **🔌 `wrap grpc`** - Set up gRPC communication in your GoFr project with minimal configuration.
+1. **`init`** - Initializes a new GoFr project with a basic "Hello World!" program.
+2. **`migrate create`** - Create new database migrations to modify your schema or data structure.
+3. **`wrap grpc`** - Set up gRPC communication in your GoFr project with minimal configuration.
+4. **`version`** - Check the current version of the GoFr CLI tool and ensure you're up to date.
 
 ---
 
 ## 🚀 **Getting Started**
+
+### **Prerequisites**
+- GoFr requires **[Go](https://go.dev/)** version **[1.21](https://go.dev/doc/devel/release#go1.21.0)** or above.
 
 ### **Installation**
 To get started with GoFr CLI, use the below commands

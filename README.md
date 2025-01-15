@@ -26,6 +26,8 @@ Users can use this CLI from initializing a simple hello world program using GoFr
 3. **🛠️ `migrate create`** - Create new database migrations to modify your schema or data structure.
 4. **🔌 `wrap grpc`** - Set up gRPC communication in your GoFr project with minimal configuration.
 
+---
+
 ## 🚀 **Getting Started**
 
 ### **Installation**
@@ -53,6 +55,7 @@ To securely clone the GoFr CLI repository, you can use HTTPS or SSH:
 ```bash
   git@github.com:gofr-dev/gofr-cli.git
 ```
+---
 ### 🎁 **Get a GoFr T-Shirt & Stickers!**
 
 If your PR is merged, or if you contribute by writing articles or promoting GoFr CLI, we invite you to fill out [this form](https://forms.gle/R1Yz7ZzY3U5WWTgy5) to claim your GoFr merchandise as a token of our appreciation!

@@ -1,5 +1,5 @@
 <h1 style="text-align: center; font-size: 100px; font-weight: 500;">
-    <i>Go</i>Fr Command Line Interface
+    <i>Go</i>Fr Command Line Interface 🚀
 </h1>
 
 <p align="center">
@@ -14,6 +14,7 @@
 
 ## ⚙️ **What is GoFr CLI?**
 GoFr CLI is the command line tool for initializing projects and performing tasks in accordance with GoFr framework.
+Users can use this CLI from initializing a simple hello world program using GoFr to writing migrations for your databases.
 
 ---
 

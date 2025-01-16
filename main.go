@@ -23,5 +23,7 @@ func main() {
 
 	cli.SubCommand("wrap grpc", wrap.GenerateWrapper)
 
+	cli.SubCommand("wrap grpc client", wrap.GenerateClientWrapper)
+
 	cli.Run()
 }

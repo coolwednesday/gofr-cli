@@ -19,8 +19,8 @@ GoFr CLI is the command line tool for initializing projects and performing tasks
 
 ## 💡 Key Features
 1. **`init`** - Initializes a new GoFr project with a basic "Hello World!" program.
-2. **`migrate create`** - Create new database migrations to modify your schema or data structure.
-3. **`wrap grpc`** - Set up gRPC communication in your GoFr project with minimal configuration.
+2. **`migrate create`** - Creates boilerplate code for database migrations to modify your schema or data structure.
+3. **`wrap grpc`** - Creates gRPC handlers with GoFr context based on proto files.
 4. **`version`** - Check the current version of the GoFr CLI tool and ensure you're up to date.
 
 ---

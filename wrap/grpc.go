@@ -13,7 +13,10 @@ import (
 	"gofr.dev/pkg/gofr"
 )
 
-const filePerm = 0644
+const (
+	filePerm            = 0644
+	serverFileExtension = "_server.go"
+)
 
 var (
 	ErrNoProtoFile              = errors.New("proto file path is required")
@@ -54,7 +57,7 @@ func GenerateClientWrapper(ctx *gofr.Context) (any, error) {
 
 // GenerateWrapper generates gRPC client and server code based on a proto definition.
 func GenerateWrapper(ctx *gofr.Context) (any, error) {
-	return generateWrapperFiles(ctx, "_gofr.go", generateWrapperCode, "_server.go", generategRPCCode)
+	return generateWrapperFiles(ctx, "_gofr.go", generateWrapperCode, serverFileExtension, generategRPCCode)
 }
 
 // Generates wrapper files for specified extensions and generation functions.
@@ -72,6 +75,7 @@ func generateWrapperFiles(ctx *gofr.Context, extensionsAndGenerators ...interfac
 	defer file.Close()
 
 	parser := proto.NewParser(file)
+
 	definition, err := parser.Parse()
 	if err != nil {
 		ctx.Errorf("Failed to parse proto file: %v", err)
@@ -95,21 +99,23 @@ func generateWrapperFiles(ctx *gofr.Context, extensionsAndGenerators ...interfac
 
 			generatedCode := generator(ctx, &wrapperData)
 			if generatedCode == "" {
-				if extension == "_server.go" {
+				if extension == serverFileExtension {
 					ctx.Errorf("%v: %v", ErrGeneratingServerTemplate, service.Name)
 					return nil, ErrGeneratingServerTemplate
 				}
+
 				return nil, ErrGeneratingWrapper
 			}
 
 			outputFilePath := path.Join(projectPath, fmt.Sprintf("%s%s", strings.ToLower(service.Name), extension))
-			err := os.WriteFile(outputFilePath, []byte(generatedCode), filePerm)
-			if err != nil {
-				if extension == "_server.go" {
+			if err := os.WriteFile(outputFilePath, []byte(generatedCode), filePerm); err != nil {
+				if extension == serverFileExtension {
 					ctx.Errorf("%v: %v", ErrWritingServerTemplate, service.Name)
 					return nil, ErrWritingServerTemplate
 				}
+
 				ctx.Errorf("Failed to write file %s: %v", outputFilePath, err)
+
 				return nil, ErrWritingWrapperFile
 			}
 
@@ -123,6 +129,7 @@ func generateWrapperFiles(ctx *gofr.Context, extensionsAndGenerators ...interfac
 // Extract unique request types from methods.
 func uniqueRequestTypes(methods []ServiceMethod) []string {
 	requests := make(map[string]bool)
+
 	for _, method := range methods {
 		if !method.Streaming {
 			requests[method.Request] = true
@@ -133,6 +140,7 @@ func uniqueRequestTypes(methods []ServiceMethod) []string {
 	for request := range requests {
 		uniqueRequests = append(uniqueRequests, request)
 	}
+
 	return uniqueRequests
 }
 
@@ -154,16 +162,17 @@ func generateClientCode(ctx *gofr.Context, data *WrapperData) string {
 // Execute a template with data.
 func executeTemplate(ctx *gofr.Context, data *WrapperData, tmpl string) string {
 	var buf bytes.Buffer
+
 	tmplInstance := template.Must(template.New("template").Parse(tmpl))
 	if err := tmplInstance.Execute(&buf, data); err != nil {
 		ctx.Errorf("Template execution failed: %v", err)
 		return ""
 	}
+
 	return buf.String()
 }
 
-func getPackageAndProject(definition *proto.Proto, protoPath string) (string, string) {
-	var packageName string
+func getPackageAndProject(definition *proto.Proto, protoPath string) (projectPath, packageName string) {
 	proto.Walk(definition,
 		proto.WithOption(func(opt *proto.Option) {
 			if opt.Name == "go_package" {
@@ -171,14 +180,17 @@ func getPackageAndProject(definition *proto.Proto, protoPath string) (string, st
 			}
 		}),
 	)
+
 	return path.Dir(protoPath), packageName
 }
 
 func getServices(definition *proto.Proto) []ProtoService {
 	var services []ProtoService
+
 	proto.Walk(definition,
 		proto.WithService(func(s *proto.Service) {
 			service := ProtoService{Name: s.Name}
+
 			for _, element := range s.Elements {
 				if rpc, ok := element.(*proto.RPC); ok {
 					method := ServiceMethod{
@@ -187,11 +199,14 @@ func getServices(definition *proto.Proto) []ProtoService {
 						Response:  rpc.ReturnsType,
 						Streaming: rpc.StreamsReturns || rpc.StreamsRequest,
 					}
+
 					service.Methods = append(service.Methods, method)
 				}
 			}
+
 			services = append(services, service)
 		}),
 	)
+
 	return services
 }

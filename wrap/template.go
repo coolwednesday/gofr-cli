@@ -193,7 +193,7 @@ func New{{ .Service }}GoFrClient(host string) (*{{ .Service }}ClientWrapper, err
 
 {{- range .Methods }}
 func (h *{{ $.Service }}ClientWrapper) {{ .Name }}(ctx *gofr.Context, req *{{ .Request }}) (*{{ .Response }}, error) {
-	span := ctx.Trace("call-gRPC-srv: {{ .Name }}")
+	span := ctx.Trace("gRPC-srv-call: {{ .Name }}")
 	defer span.End()
 
 	traceID := span.SpanContext().TraceID().String()

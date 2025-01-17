@@ -20,9 +20,9 @@ Users can use this CLI from initializing a simple hello world program using GoFr
 
 ## 💡 Key Features
 1. **`init`** - Initializes a new GoFr project with a basic "Hello World!" program.
-2. **`migrate create`** - Creates boilerplate code for database migrations to modify your schema or data structure.
+2. **`migrate create`** - Creates boilerplate code for database migrations to modify your schema.
 3. **`wrap grpc`** - Creates gRPC handlers with GoFr context based on proto files.
-4. **`version`** - Check the current version of the GoFr CLI tool and ensure you're up to date.
+4. **`version`** - Checks the current version of the GoFr CLI tool.
 
 ---
 

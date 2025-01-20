@@ -127,7 +127,7 @@ import "gofr.dev/pkg/gofr"
 
 // Register the gRPC service in your app using the following code in your main.go:
 //
-// {{ .Package }}.Register{{ $.Service }}ServerWithGofr(app, &grpc.{{ $.Service }}GoFrServer{})
+// {{ .Package }}.Register{{ $.Service }}ServerWithGofr(app, &{{ .Package }}.{{ $.Service }}GoFrServer{})
 //
 // {{ $.Service }}GoFrServer defines the gRPC server implementation.
 // Customize the struct with required dependencies and fields as needed.

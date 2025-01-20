@@ -11,9 +11,9 @@ import (
 
 	"gofr.dev/pkg/gofr"
 	"gofr.dev/pkg/gofr/container"
-	"google.golang.org/client"
-	"google.golang.org/client/codes"
-	"google.golang.org/client/status"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type {{ .Service }}ServerWithGofr interface {
@@ -27,7 +27,7 @@ type {{ .Service }}ServerWithGofr interface {
 type {{ .Service }}ServerWrapper struct {
 	{{ .Service }}Server
 	Container *container.Container
-	client    {{ .Service }}ServerWithGofr
+	server    {{ .Service }}ServerWithGofr
 }
 
 {{- range .Methods }}
@@ -35,7 +35,7 @@ type {{ .Service }}ServerWrapper struct {
 func (h *{{ $.Service }}ServerWrapper) {{ .Name }}(ctx context.Context, req *{{ .Request }}) (*{{ .Response }}, error) {
 	gctx := h.GetGofrContext(ctx, &{{ .Request }}Wrapper{ctx: ctx, {{ .Request }}: req})
 
-	res, err := h.client.{{ .Name }}(gctx)
+	res, err := h.server.{{ .Name }}(gctx)
 
 	if err != nil {
 		return nil, err
@@ -54,8 +54,8 @@ func (h *{{ $.Service }}ServerWrapper) {{ .Name }}(ctx context.Context, req *{{ 
 
 func (h *{{ .Service }}ServerWrapper) mustEmbedUnimplemented{{ .Service }}Server() {}
 
-func Register{{ .Service }}ServerWithGofr(s client.ServiceRegistrar, srv {{ .Service }}ServerWithGofr) {
-	wrapper := &{{ .Service }}ServerWrapper{client: srv}
+func Register{{ .Service }}ServerWithGofr(s grpc.ServiceRegistrar, srv {{ .Service }}ServerWithGofr) {
+	wrapper := &{{ .Service }}ServerWrapper{server: srv}
 	Register{{ .Service }}Server(s, wrapper)
 }
 
@@ -127,9 +127,9 @@ import "gofr.dev/pkg/gofr"
 
 // Register the gRPC service in your app using the following code in your main.go:
 //
-// {{ .Package }}.Register{{ $.Service }}ServerWithGofr(app, &client.{{ $.Service }}GoFrServer{})
+// {{ .Package }}.Register{{ $.Service }}ServerWithGofr(app, &grpc.{{ $.Service }}GoFrServer{})
 //
-// {{ $.Service }}GoFrServer defines the gRPC client implementation.
+// {{ $.Service }}GoFrServer defines the gRPC server implementation.
 // Customize the struct with required dependencies and fields as needed.
 
 type {{ $.Service }}GoFrServer struct {
@@ -154,9 +154,9 @@ package {{ .Package }}
 import (
 	"gofr.dev/pkg/gofr"
 	"gofr.dev/pkg/gofr/container"
-	"google.golang.org/client"
-	"google.golang.org/client/credentials/insecure"
-	"google.golang.org/client/metadata"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 type {{ .Service }}GoFrClient interface {
@@ -171,8 +171,8 @@ type {{ .Service }}ClientWrapper struct {
 	{{ .Service }}GoFrClient
 }
 
-func createGRPCConn(host string) (*client.ClientConn, error) {
-	conn, err := client.Dial(host, client.WithTransportCredentials(insecure.NewCredentials()))
+func createGRPCConn(host string) (*grpc.ClientConn, error) {
+	conn, err := grpc.Dial(host, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}

@@ -21,7 +21,9 @@ func main() {
 
 	cli.SubCommand("migrate create", migration.Migrate)
 
-	cli.SubCommand("wrap grpc", wrap.GenerateWrapper)
+	cli.SubCommand("wrap grpc server", wrap.BuildGRPCGoFrServer)
+
+	cli.SubCommand("wrap grpc client", wrap.BuildGRPCGoFrClient)
 
 	cli.Run()
 }

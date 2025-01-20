@@ -29,7 +29,7 @@ Users can use this CLI from initializing a simple hello world program using GoFr
 ## 🚀 **Getting Started**
 
 ### **Prerequisites**
-- GoFr CLI requires **[Go](https://go.dev/)** version **[1.21](https://go.dev/doc/devel/release#go1.21.0)** or above.
+- GoFr CLI requires **[Go](https://go.dev/)** version **[1.22](https://go.dev/doc/devel/release#go1.22.0)** or above.
 
 ### **Installation**
 To get started with GoFr CLI, use the below commands

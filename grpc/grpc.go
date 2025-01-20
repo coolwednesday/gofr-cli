@@ -1,4 +1,4 @@
-package wrap
+package grpc
 
 import (
 	"bytes"
@@ -21,43 +21,43 @@ const (
 )
 
 var (
-	ErrNoProtoFile        = errors.New("proto file path is required")
-	ErrOpeningProtoFile   = errors.New("error opening the proto file")
-	ErrFailedToParseProto = errors.New("failed to parse proto file")
-	ErrGeneratingWrapper  = errors.New("error while generating the code using proto file")
-	ErrWritingFile        = errors.New("error writing the generated code to the file")
+	errNoProtoFile        = errors.New("proto file path is required")
+	errOpeningProtoFile   = errors.New("error opening the proto file")
+	errFailedToParseProto = errors.New("failed to parse proto file")
+	errGeneratingWrapper  = errors.New("error while generating the code using proto file")
+	errWritingFile        = errors.New("error writing the generated code to the file")
 )
 
-// ServiceMethod represents a method in a proto service.
-type ServiceMethod struct {
+// serviceMethod represents a method in a proto service.
+type serviceMethod struct {
 	Name      string
 	Request   string
 	Response  string
 	Streaming bool
 }
 
-// ProtoService represents a service in a proto file.
-type ProtoService struct {
+// protoService represents a service in a proto file.
+type protoService struct {
 	Name    string
-	Methods []ServiceMethod
+	Methods []serviceMethod
 }
 
-// WrapperData is the template data structure.
-type WrapperData struct {
+// wrapperData is the template data structure.
+type wrapperData struct {
 	Package  string
 	Service  string
-	Methods  []ServiceMethod
+	Methods  []serviceMethod
 	Requests []string
 }
 
-type FileType struct {
+type fileType struct {
 	FileSuffix    string
-	CodeGenerator func(*gofr.Context, *WrapperData) string
+	CodeGenerator func(*gofr.Context, *wrapperData) string
 }
 
 // BuildGRPCGoFrClient generates gRPC client wrapper code based on a proto definition.
 func BuildGRPCGoFrClient(ctx *gofr.Context) (any, error) {
-	gRPCClient := FileType{
+	gRPCClient := fileType{
 		FileSuffix:    clientFileSuffix,
 		CodeGenerator: generateGoFrClient,
 	}
@@ -65,9 +65,9 @@ func BuildGRPCGoFrClient(ctx *gofr.Context) (any, error) {
 	return generateWrapper(ctx, gRPCClient)
 }
 
-// BuildGRPCGoFrServer generates gRPC client and server code based on a proto definition.
+// BuildGRPCGoFrServer generates gRPC client and client code based on a proto definition.
 func BuildGRPCGoFrServer(ctx *gofr.Context) (any, error) {
-	gRPCServer := []FileType{
+	gRPCServer := []fileType{
 		{FileSuffix: serverWrapperFileSuffix, CodeGenerator: generateGoFrServerWrapper},
 		{FileSuffix: serverFileSuffix, CodeGenerator: generateGoFrServer},
 	}
@@ -75,19 +75,19 @@ func BuildGRPCGoFrServer(ctx *gofr.Context) (any, error) {
 	return generateWrapper(ctx, gRPCServer...)
 }
 
-// generateWrapper executes the function for specified FileType to create GoFr integrated
-// gRPC server/client files with the required services in proto file and
+// generateWrapper executes the function for specified fileType to create GoFr integrated
+// gRPC client/client files with the required services in proto file and
 // specified suffix for every service specified in the proto file.
-func generateWrapper(ctx *gofr.Context, options ...FileType) (any, error) {
+func generateWrapper(ctx *gofr.Context, options ...fileType) (any, error) {
 	protoPath := ctx.Param("proto")
 	if protoPath == "" {
-		return nil, ErrNoProtoFile
+		return nil, errNoProtoFile
 	}
 
 	file, err := os.Open(protoPath)
 	if err != nil {
 		ctx.Errorf("Failed to open proto file: %v", err)
-		return nil, ErrOpeningProtoFile
+		return nil, errOpeningProtoFile
 	}
 	defer file.Close()
 
@@ -96,14 +96,14 @@ func generateWrapper(ctx *gofr.Context, options ...FileType) (any, error) {
 	definition, err := parser.Parse()
 	if err != nil {
 		ctx.Errorf("Failed to parse proto file: %v", err)
-		return nil, ErrFailedToParseProto
+		return nil, errFailedToParseProto
 	}
 
 	projectPath, packageName := getPackageAndProject(definition, protoPath)
 	services := getServices(definition)
 
 	for _, service := range services {
-		wrapperData := WrapperData{
+		data := wrapperData{
 			Package:  packageName,
 			Service:  service.Name,
 			Methods:  service.Methods,
@@ -111,17 +111,17 @@ func generateWrapper(ctx *gofr.Context, options ...FileType) (any, error) {
 		}
 
 		for _, option := range options {
-			generatedCode := option.CodeGenerator(ctx, &wrapperData)
+			generatedCode := option.CodeGenerator(ctx, &data)
 			if generatedCode == "" {
 				ctx.Errorf("Failed to generate code for service %s with file suffix %s", service.Name, option.FileSuffix)
-				return nil, ErrGeneratingWrapper
+				return nil, errGeneratingWrapper
 			}
 
 			// Generate output file path based on service name and file suffix.
 			outputFilePath := path.Join(projectPath, strings.ToLower(service.Name)+option.FileSuffix)
 			if writeErr := os.WriteFile(outputFilePath, []byte(generatedCode), filePerm); writeErr != nil {
 				ctx.Errorf("Failed to write file %s: %v", outputFilePath, writeErr)
-				return nil, ErrWritingFile
+				return nil, errWritingFile
 			}
 
 			fmt.Printf("Generated file for service %s at %s\n", service.Name, outputFilePath)
@@ -132,7 +132,7 @@ func generateWrapper(ctx *gofr.Context, options ...FileType) (any, error) {
 }
 
 // Extract unique request types from methods.
-func uniqueRequestTypes(methods []ServiceMethod) []string {
+func uniqueRequestTypes(methods []serviceMethod) []string {
 	requests := make(map[string]bool)
 
 	for _, method := range methods {
@@ -149,23 +149,23 @@ func uniqueRequestTypes(methods []ServiceMethod) []string {
 	return uniqueRequests
 }
 
-// Generate GoFr server wrapper for gRPC using the wrapperTemplate.
-func generateGoFrServerWrapper(ctx *gofr.Context, data *WrapperData) string {
+// Generate GoFr client wrapper for gRPC using the wrapperTemplate.
+func generateGoFrServerWrapper(ctx *gofr.Context, data *wrapperData) string {
 	return executeTemplate(ctx, data, wrapperTemplate)
 }
 
 // Generate GoFr gRPCHandler code using the serverTemplate.
-func generateGoFrServer(ctx *gofr.Context, data *WrapperData) string {
+func generateGoFrServer(ctx *gofr.Context, data *wrapperData) string {
 	return executeTemplate(ctx, data, serverTemplate)
 }
 
 // Generate GoFr gRPC Client code using the clientTemplate.
-func generateGoFrClient(ctx *gofr.Context, data *WrapperData) string {
+func generateGoFrClient(ctx *gofr.Context, data *wrapperData) string {
 	return executeTemplate(ctx, data, clientTemplate)
 }
 
 // Execute a template with data.
-func executeTemplate(ctx *gofr.Context, data *WrapperData, tmpl string) string {
+func executeTemplate(ctx *gofr.Context, data *wrapperData, tmpl string) string {
 	var buf bytes.Buffer
 
 	tmplInstance := template.Must(template.New("template").Parse(tmpl))
@@ -189,16 +189,16 @@ func getPackageAndProject(definition *proto.Proto, protoPath string) (projectPat
 	return path.Dir(protoPath), packageName
 }
 
-func getServices(definition *proto.Proto) []ProtoService {
-	var services []ProtoService
+func getServices(definition *proto.Proto) []protoService {
+	var services []protoService
 
 	proto.Walk(definition,
 		proto.WithService(func(s *proto.Service) {
-			service := ProtoService{Name: s.Name}
+			service := protoService{Name: s.Name}
 
 			for _, element := range s.Elements {
 				if rpc, ok := element.(*proto.RPC); ok {
-					method := ServiceMethod{
+					method := serviceMethod{
 						Name:      rpc.Name,
 						Request:   rpc.RequestType,
 						Response:  rpc.ReturnsType,

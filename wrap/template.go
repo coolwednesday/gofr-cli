@@ -152,12 +152,30 @@ return &{{ .Response }}{}, nil
 package {{ .Package }}
 
 import (
+	"io"
+	"fmt"
+	"encoding/json"
+
 	"gofr.dev/pkg/gofr"
 	"gofr.dev/pkg/gofr/container"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
+
+const (
+	statusCodeWidth  = 3
+	responseTimeWidth = 11
+)
+
+type RPCLog struct {
+	ID           string ` + "`json:\"id\"`\n" +
+		`StartTime    string ` + "`json:\"startTime\"`\n" +
+		`ResponseTime int64  ` + "`json:\"responseTime\"`\n" +
+		`Method       string ` + "`json:\"method\"`\n" +
+		`StatusCode   int32  ` + "`json:\"statusCode\"`\n" +
+		`}
 
 type {{ .Service }}GoFrClient interface {
 {{- range .Methods }}
@@ -202,8 +220,49 @@ func (h *{{ $.Service }}ClientWrapper) {{ .Name }}(ctx *gofr.Context, req *{{ .R
 
 	ctx.Context = metadata.NewOutgoingContext(ctx.Context, md)
 
-	return h.client.{{ .Name }}(ctx.Context, req)
+	var header metadata.MD
+
+	res, err := h.client.{{ .Name }}(ctx.Context, req, grpc.Header(&header))
+	if err != nil {
+		return nil, err
+	}
+
+	log := &RPCLog{}
+
+	if values, ok := header["log"]; ok && len(values) > 0 {
+		errUnmarshal := json.Unmarshal([]byte(values[0]), log)
+		if errUnmarshal != nil {
+			return nil, fmt.Errorf("error while unmarshaling: %v", errUnmarshal)
+		}
+	}
+
+	ctx.Logger.Info(log)
+
+	return res, err
 }
+
+func (l RPCLog) PrettyPrint(writer io.Writer) {
+	fmt.Fprintf(writer, "\u001B[38;5;8m%s \u001B[38;5;%dm%-*d"+
+		"\u001B[0m %*d\u001B[38;5;8mµs\u001B[0m %s\n",
+		l.ID, colorForGRPCCode(l.StatusCode),
+		statusCodeWidth, l.StatusCode,
+		responseTimeWidth, l.ResponseTime,
+		l.Method)
+}
+
+func colorForGRPCCode(s int32) int {
+	const (
+		blue = 34
+		red  = 202
+	)
+
+	if s == 0 {
+		return blue
+	}
+
+	return red
+}
+
 {{- end }}
 `
 )

@@ -43,7 +43,9 @@ func (h *{{ $.Service }}ServerWrapper) {{ .Name }}(ctx context.Context, req *{{ 
 	}
 
 	duration := time.Since(start)
-	gctx.Metrics().RecordHistogram(ctx, "app_gRPC-Server_stats", float64(duration.Milliseconds())+float64(duration.Nanoseconds()%1e6)/1e6, "gRPC_Service", "{{ $.Service }}", "method", "{{ .Name }}")
+	gctx.Metrics().RecordHistogram(ctx, "app_gRPC-Server_stats", 
+									float64(duration.Milliseconds())+float64(duration.Nanoseconds()%1e6)/1e6, 
+									"gRPC_Service", "{{ $.Service }}", "method", "{{ .Name }}")
 
 	resp, ok := res.(*{{ .Response }})
 	if !ok {

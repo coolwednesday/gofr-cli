@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"time"
 
 	"gofr.dev/pkg/gofr"
 	"gofr.dev/pkg/gofr/container"
@@ -35,11 +36,16 @@ type {{ .Service }}ServerWrapper struct {
 func (h *{{ $.Service }}ServerWrapper) {{ .Name }}(ctx context.Context, req *{{ .Request }}) (*{{ .Response }}, error) {
 	gctx := h.GetGofrContext(ctx, &{{ .Request }}Wrapper{ctx: ctx, {{ .Request }}: req})
 
+	start := time.Now()
 	res, err := h.server.{{ .Name }}(gctx)
-
 	if err != nil {
 		return nil, err
 	}
+
+	duration := time.Since(start)
+	gctx.Metrics().RecordHistogram(ctx, "app_gRPC-Server_stats", 
+									float64(duration.Milliseconds())+float64(duration.Nanoseconds()%1e6)/1e6, 
+									"gRPC_Service", "{{ $.Service }}", "method", "{{ .Name }}")
 
 	resp, ok := res.(*{{ .Response }})
 	if !ok {
@@ -54,8 +60,14 @@ func (h *{{ $.Service }}ServerWrapper) {{ .Name }}(ctx context.Context, req *{{ 
 
 func (h *{{ .Service }}ServerWrapper) mustEmbedUnimplemented{{ .Service }}Server() {}
 
-func Register{{ .Service }}ServerWithGofr(s grpc.ServiceRegistrar, srv {{ .Service }}ServerWithGofr) {
+func Register{{ .Service }}ServerWithGofr(app *gofr.App, srv {{ .Service }}ServerWithGofr) {
+	var s grpc.ServiceRegistrar = app
+
 	wrapper := &{{ .Service }}ServerWrapper{server: srv}
+
+	gRPCBuckets := []float64{0.005, 0.01, .05, .075, .1, .125, .15, .2, .3, .5, .75, 1, 2, 3, 4, 5, 7.5, 10}
+	app.Metrics().NewHistogram("app_gRPC-Server_stats", "Response time of gRPC server in milliseconds.", gRPCBuckets...)
+
 	Register{{ .Service }}Server(s, wrapper)
 }
 
@@ -155,9 +167,9 @@ import (
 	"io"
 	"fmt"
 	"encoding/json"
+	"time"
 
 	"gofr.dev/pkg/gofr"
-	"gofr.dev/pkg/gofr/container"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -185,7 +197,6 @@ type {{ .Service }}GoFrClient interface {
 
 type {{ .Service }}ClientWrapper struct {
 	client    {{ .Service }}Client
-	Container *container.Container
 	{{ .Service }}GoFrClient
 }
 
@@ -197,11 +208,15 @@ func createGRPCConn(host string) (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
-func New{{ .Service }}GoFrClient(host string) (*{{ .Service }}ClientWrapper, error) {
+func New{{ .Service }}GoFrClient(host string, app *gofr.App) (*{{ .Service }}ClientWrapper, error) {
 	conn, err := createGRPCConn(host)
 	if err != nil {
 		return &{{ .Service }}ClientWrapper{client: nil}, err
 	}
+	
+	gRPCBuckets := []float64{0.005, 0.01, .05, .075, .1, .125, .15, .2, .3, .5, .75, 1, 2, 3, 4, 5, 7.5, 10}
+	app.Metrics().NewHistogram("app_gRPC-Client_stats", "Response time of gRPC client in milliseconds.", gRPCBuckets...)
+
 
 	res := New{{ .Service }}Client(conn)
 	return &{{ .Service }}ClientWrapper{
@@ -221,11 +236,20 @@ func (h *{{ $.Service }}ClientWrapper) {{ .Name }}(ctx *gofr.Context, req *{{ .R
 	ctx.Context = metadata.NewOutgoingContext(ctx.Context, md)
 
 	var header metadata.MD
+	
+	transactionStartTime := time.Now()
 
 	res, err := h.client.{{ .Name }}(ctx.Context, req, grpc.Header(&header))
 	if err != nil {
 		return nil, err
 	}
+
+	duration := time.Since(transactionStartTime)
+
+	ctx.Metrics().RecordHistogram(ctx, "app_gRPC-Client_stats", 
+									float64(duration.Milliseconds())+float64(duration.Nanoseconds()%1e6)/1e6, 
+									"gRPC_Service", "{{ $.Service }}", 
+									"method", "{{ .Name }}")
 
 	log := &RPCLog{}
 

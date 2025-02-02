@@ -18,6 +18,8 @@ const (
 	serverFileSuffix        = "_server.go"
 	serverWrapperFileSuffix = "_gofr.go"
 	clientFileSuffix        = "_client.go"
+	clientHealthFile        = "health_client.go"
+	serverHealthFile        = "health_gofr.go"
 )
 
 var (
@@ -57,18 +59,25 @@ type FileType struct {
 
 // BuildGRPCGoFrClient generates gRPC client wrapper code based on a proto definition.
 func BuildGRPCGoFrClient(ctx *gofr.Context) (any, error) {
-	gRPCClient := FileType{
-		FileSuffix:    clientFileSuffix,
-		CodeGenerator: generateGoFrClient,
+	gRPCClient := []FileType{
+		{
+			FileSuffix:    clientFileSuffix,
+			CodeGenerator: generateGoFrClient,
+		},
+		{
+			FileSuffix:    clientHealthFile,
+			CodeGenerator: generateGoFrClientHealth,
+		},
 	}
 
-	return generateWrapper(ctx, gRPCClient)
+	return generateWrapper(ctx, gRPCClient...)
 }
 
 // BuildGRPCGoFrServer generates gRPC client and server code based on a proto definition.
 func BuildGRPCGoFrServer(ctx *gofr.Context) (any, error) {
 	gRPCServer := []FileType{
 		{FileSuffix: serverWrapperFileSuffix, CodeGenerator: generateGoFrServerWrapper},
+		{FileSuffix: serverHealthFile, CodeGenerator: generateGoFrServerHealthWrapper},
 		{FileSuffix: serverFileSuffix, CodeGenerator: generateGoFrServer},
 	}
 
@@ -117,8 +126,18 @@ func generateWrapper(ctx *gofr.Context, options ...FileType) (any, error) {
 				return nil, ErrGeneratingWrapper
 			}
 
-			// Generate output file path based on service name and file suffix.
-			outputFilePath := path.Join(projectPath, strings.ToLower(service.Name)+option.FileSuffix)
+			var outputFilePath string
+			// Compare the CodeGenerator function reference
+			switch option.FileSuffix {
+			case clientHealthFile:
+				outputFilePath = path.Join(projectPath, clientHealthFile)
+			case serverHealthFile:
+				outputFilePath = path.Join(projectPath, serverHealthFile)
+			default:
+				// Use the service name for other cases
+				outputFilePath = path.Join(projectPath, strings.ToLower(service.Name)+option.FileSuffix)
+			}
+
 			if writeErr := os.WriteFile(outputFilePath, []byte(generatedCode), filePerm); writeErr != nil {
 				ctx.Errorf("Failed to write file %s: %v", outputFilePath, writeErr)
 				return nil, ErrWritingFile
@@ -152,6 +171,15 @@ func uniqueRequestTypes(methods []ServiceMethod) []string {
 // Generate GoFr server wrapper for gRPC using the wrapperTemplate.
 func generateGoFrServerWrapper(ctx *gofr.Context, data *WrapperData) string {
 	return executeTemplate(ctx, data, wrapperTemplate)
+}
+
+// Generate GoFr server wrapper for gRPC using the wrapperTemplate.
+func generateGoFrServerHealthWrapper(ctx *gofr.Context, data *WrapperData) string {
+	return executeTemplate(ctx, data, healthServerTemplate)
+}
+
+func generateGoFrClientHealth(ctx *gofr.Context, data *WrapperData) string {
+	return executeTemplate(ctx, data, clientHealthTemplate)
 }
 
 // Generate GoFr gRPCHandler code using the serverTemplate.

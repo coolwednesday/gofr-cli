@@ -140,7 +140,7 @@ import "gofr.dev/pkg/gofr"
 
 // Register the gRPC service in your app using the following code in your main.go:
 //
-// {{ .Package }}.Register{{ $.Service }}ServerWithGofr(app, &{{ .Package }}.{{ $.Service }}GoFrServer{})
+// {{ .Package }}.Register{{ $.Service }}ServerWithGofr(app, &{{ .Package }}.New{{ $.Service }}GoFrServer())
 //
 // {{ $.Service }}GoFrServer defines the gRPC server implementation.
 // Customize the struct with required dependencies and fields as needed.
@@ -186,7 +186,6 @@ type {{ .Service }}ClientWrapper struct {
 func New{{ .Service }}GoFrClient(host string, metrics metrics.Manager) ({{ .Service }}GoFrClient, error) {
 	conn, err := createGRPCConn(host, "{{ .Service }}")
 	if err != nil {
-		// Return a fully implemented GoodbyeClientWrapper with a nil client
 		return &{{ .Service }}ClientWrapper{
 			client:       nil,
 			HealthClient: &HealthClientWrapper{client: nil}, // Ensure HealthClient is also implemented

@@ -44,7 +44,7 @@ type {{ .Service }}ServerWrapper struct {
 {{- if not .Streaming }}
 // {{ .Name }} wraps the method and handles its execution
 func (h *{{ $.Service }}ServerWrapper) {{ .Name }}(ctx context.Context, req *{{ .Request }}) (*{{ .Response }}, error) {
-	gctx := h.GetGofrContext(ctx, &{{ .Request }}Wrapper{ctx: ctx, {{ .Request }}: req})
+	gctx := h.getGofrContext(ctx, &{{ .Request }}Wrapper{ctx: ctx, {{ .Request }}: req})
 
 	res, err := h.server.{{ .Name }}(gctx)
 	if err != nil {
@@ -73,8 +73,8 @@ func Register{{ .Service }}ServerWithGofr(app *gofr.App, srv {{ .Service }}Serve
 	})
 }
 
-// GetGofrContext extracts the GoFr context from the original context
-func (h *{{ .Service }}ServerWrapper) GetGofrContext(ctx context.Context, req gofr.Request) *gofr.Context {
+// getGofrContext extracts the GoFr context from the original context
+func (h *{{ .Service }}ServerWrapper) getGofrContext(ctx context.Context, req gofr.Request) *gofr.Context {
 	return &gofr.Context{
 		Context:   ctx,
 		Container: h.Container,

@@ -8,44 +8,48 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"time"
 
 	"gofr.dev/pkg/gofr"
 	"gofr.dev/pkg/gofr/container"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-type {{ .Service }}ServerWithGofr interface {
-{{- range .Methods }}
-	{{- if not .Streaming }}
-	{{ .Name }}(*gofr.Context) (any, error)
-	{{- end }}
-{{- end }}
+// New{{ .Service }}GoFrServer creates a new instance of {{ .Service }}GoFrServer
+func New{{ .Service }}GoFrServer() *{{ .Service }}GoFrServer {
+	return &{{ .Service }}GoFrServer{
+		health: getOrCreateHealthServer(), // Initialize the health server
+	}
 }
 
+// {{ .Service }}ServerWithGofr is the interface for the server implementation
+type {{ .Service }}ServerWithGofr interface {
+	{{- range .Methods }}
+	{{ .Name }}(*gofr.Context) (any, error)
+	{{- end }}
+}
+
+// {{ .Service }}ServerWrapper wraps the server and handles request and response logic
 type {{ .Service }}ServerWrapper struct {
 	{{ .Service }}Server
+	*healthServer
 	Container *container.Container
 	server    {{ .Service }}ServerWithGofr
 }
 
-{{- range .Methods }}
+// {{- range .Methods }}
 {{- if not .Streaming }}
+// {{ .Name }} wraps the method and handles its execution
 func (h *{{ $.Service }}ServerWrapper) {{ .Name }}(ctx context.Context, req *{{ .Request }}) (*{{ .Response }}, error) {
-	gctx := h.GetGofrContext(ctx, &{{ .Request }}Wrapper{ctx: ctx, {{ .Request }}: req})
+	gctx := h.getGofrContext(ctx, &{{ .Request }}Wrapper{ctx: ctx, {{ .Request }}: req})
 
-	start := time.Now()
 	res, err := h.server.{{ .Name }}(gctx)
 	if err != nil {
 		return nil, err
 	}
-
-	duration := time.Since(start)
-	gctx.Metrics().RecordHistogram(ctx, "app_gRPC-Server_stats", 
-									float64(duration.Milliseconds())+float64(duration.Nanoseconds()%1e6)/1e6, 
-									"gRPC_Service", "{{ $.Service }}", "method", "{{ .Name }}")
 
 	resp, ok := res.(*{{ .Response }})
 	if !ok {
@@ -55,23 +59,22 @@ func (h *{{ $.Service }}ServerWrapper) {{ .Name }}(ctx context.Context, req *{{ 
 	return resp, nil
 }
 {{- end }}
-
 {{- end }}
 
+// mustEmbedUnimplemented{{ .Service }}Server ensures that the server implements all required methods
 func (h *{{ .Service }}ServerWrapper) mustEmbedUnimplemented{{ .Service }}Server() {}
 
+// Register{{ .Service }}ServerWithGofr registers the server with the application
 func Register{{ .Service }}ServerWithGofr(app *gofr.App, srv {{ .Service }}ServerWithGofr) {
-	var s grpc.ServiceRegistrar = app
-
-	wrapper := &{{ .Service }}ServerWrapper{server: srv}
-
-	gRPCBuckets := []float64{0.005, 0.01, .05, .075, .1, .125, .15, .2, .3, .5, .75, 1, 2, 3, 4, 5, 7.5, 10}
-	app.Metrics().NewHistogram("app_gRPC-Server_stats", "Response time of gRPC server in milliseconds.", gRPCBuckets...)
-
-	Register{{ .Service }}Server(s, wrapper)
+	registerServerWithGofr(app, srv, func(s grpc.ServiceRegistrar, srv any) {
+		wrapper := &{{ .Service }}ServerWrapper{server: srv.({{ .Service }}ServerWithGofr), healthServer: getOrCreateHealthServer()}
+		Register{{ .Service }}Server(s, wrapper)
+		wrapper.Server.SetServingStatus("{{ .Service }}", healthpb.HealthCheckResponse_SERVING)
+	})
 }
 
-func (h *{{ .Service }}ServerWrapper) GetGofrContext(ctx context.Context, req gofr.Request) *gofr.Context {
+// getGofrContext extracts the GoFr context from the original context
+func (h *{{ .Service }}ServerWrapper) getGofrContext(ctx context.Context, req gofr.Request) *gofr.Context {
 	return &gofr.Context{
 		Context:   ctx,
 		Container: h.Container,
@@ -79,7 +82,8 @@ func (h *{{ .Service }}ServerWrapper) GetGofrContext(ctx context.Context, req go
 	}
 }
 
-{{- range $request := .Requests }}
+// {{- range $request := .Requests }}
+// Request Wrappers
 type {{ $request }}Wrapper struct {
 	ctx context.Context
 	*{{ $request }}
@@ -106,10 +110,8 @@ func (h *{{ $request }}Wrapper) Bind(p interface{}) error {
 	hValue := reflect.ValueOf(h.{{ $request }}).Elem()
 	ptrValue := ptr.Elem()
 
-	// Ensure we can set exported fields (skip unexported fields)
 	for i := 0; i < hValue.NumField(); i++ {
 		field := hValue.Type().Field(i)
-		// Skip the fields we don't want to copy (state, sizeCache, unknownFields)
 		if field.Name == "state" || field.Name == "sizeCache" || field.Name == "unknownFields" {
 			continue
 		}
@@ -129,7 +131,6 @@ func (h *{{ $request }}Wrapper) HostName() string {
 func (h *{{ $request }}Wrapper) Params(s string) []string {
 	return nil
 }
-
 {{- end }}
 `
 
@@ -139,12 +140,13 @@ import "gofr.dev/pkg/gofr"
 
 // Register the gRPC service in your app using the following code in your main.go:
 //
-// {{ .Package }}.Register{{ $.Service }}ServerWithGofr(app, &{{ .Package }}.{{ $.Service }}GoFrServer{})
+// {{ .Package }}.Register{{ $.Service }}ServerWithGofr(app, &{{ .Package }}.New{{ $.Service }}GoFrServer())
 //
 // {{ $.Service }}GoFrServer defines the gRPC server implementation.
 // Customize the struct with required dependencies and fields as needed.
 
 type {{ $.Service }}GoFrServer struct {
+ health *healthServer
 }
 
 {{- range .Methods }}
@@ -164,69 +166,213 @@ return &{{ .Response }}{}, nil
 package {{ .Package }}
 
 import (
-	"io"
-	"fmt"
-	"encoding/json"
-	"time"
-
 	"gofr.dev/pkg/gofr"
 	"gofr.dev/pkg/gofr/metrics"
-
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 )
-
-const (
-	statusCodeWidth  = 3
-	responseTimeWidth = 11
-)
-
-type RPCLog struct {
-	ID           string ` + "`json:\"id\"`\n" +
-		`StartTime    string ` + "`json:\"startTime\"`\n" +
-		`ResponseTime int64  ` + "`json:\"responseTime\"`\n" +
-		`Method       string ` + "`json:\"method\"`\n" +
-		`StatusCode   int32  ` + "`json:\"statusCode\"`\n" +
-		`}
 
 type {{ .Service }}GoFrClient interface {
 {{- range .Methods }}
-	{{ .Name }}(*gofr.Context, *{{ .Request }}) (*{{ .Response }}, error)
+	{{ .Name }}(*gofr.Context, *{{ .Request }}, ...grpc.CallOption) (*{{ .Response }}, error)
 {{- end }}
+	HealthClient
 }
 
 type {{ .Service }}ClientWrapper struct {
-	client    {{ .Service }}Client
-	{{ .Service }}GoFrClient
+	client {{ .Service }}Client
+	HealthClient
 }
 
-func createGRPCConn(host string) (*grpc.ClientConn, error) {
-	conn, err := grpc.Dial(host, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func New{{ .Service }}GoFrClient(host string, metrics metrics.Manager) ({{ .Service }}GoFrClient, error) {
+	conn, err := createGRPCConn(host, "{{ .Service }}")
+	if err != nil {
+		return &{{ .Service }}ClientWrapper{
+			client:       nil,
+			HealthClient: &HealthClientWrapper{client: nil}, // Ensure HealthClient is also implemented
+		}, err
+	}
+
+	metricsOnce.Do(func() {
+		metrics.NewHistogram("app_gRPC-Client_stats", "Response time of gRPC client in milliseconds.", gRPCBuckets...)
+	})
+
+	res := New{{ .Service }}Client(conn)
+	healthClient := NewHealthClient(conn)
+
+	return &{{ .Service }}ClientWrapper{
+		client: res,
+		HealthClient: healthClient,
+	}, nil
+}
+
+{{- range .Methods }}
+func (h *{{ $.Service }}ClientWrapper) {{ .Name }}(ctx *gofr.Context, req *{{ .Request }}, 
+opts ...grpc.CallOption) (*{{ .Response }}, error) {
+	result, err := invokeRPC(ctx, "/{{ $.Service }}/{{ .Name }}", func() (interface{}, error) {
+		return h.client.{{ .Name }}(ctx.Context, req, opts...)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return result.(*{{ .Response }}), nil
+}
+{{- end }}
+`
+
+	healthServerTemplate = `// Code generated by gofr.dev/cli/gofr. DO NOT EDIT.
+package {{ .Package }}
+
+import (
+	"fmt"
+	"google.golang.org/grpc"
+	"time"
+
+	"gofr.dev/pkg/gofr"
+
+	gofrGRPC "gofr.dev/pkg/gofr/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+)
+
+type healthServer struct {
+	*health.Server
+}
+
+var globalHealthServer *healthServer
+var healthServerRegistered bool // Global flag to track if health server is registered
+
+// getOrCreateHealthServer ensures only one health server is created and reused.
+func getOrCreateHealthServer() *healthServer {
+	if globalHealthServer == nil {
+		globalHealthServer = &healthServer{health.NewServer()}
+	}
+	return globalHealthServer
+}
+
+func registerServerWithGofr(app *gofr.App, srv any, registerFunc func(grpc.ServiceRegistrar, any)) {
+	var s grpc.ServiceRegistrar = app
+	h := getOrCreateHealthServer()
+
+	// Register metrics and health server only once
+	if !healthServerRegistered {
+		gRPCBuckets := []float64{0.005, 0.01, .05, .075, .1, .125, .15, .2, .3, .5, .75, 1, 2, 3, 4, 5, 7.5, 10}
+		app.Metrics().NewHistogram("app_gRPC-Server_stats", "Response time of gRPC server in milliseconds.", gRPCBuckets...)
+
+		healthpb.RegisterHealthServer(s, h.Server)
+		h.Server.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+		healthServerRegistered = true
+	}
+
+	// Register the provided server
+	registerFunc(s, srv)
+}
+
+func (h *healthServer) Check(ctx *gofr.Context, req *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
+	start := time.Now()
+	span := ctx.Trace("/grpc.health.v1.Health/Check")
+	res, err := h.Server.Check(ctx.Context, req)
+	logger := gofrGRPC.NewgRPCLogger()
+	logger.DocumentRPCLog(ctx.Context, ctx.Logger, ctx.Metrics(), start, err,
+	fmt.Sprintf("/grpc.health.v1.Health/Check	Service: %q", req.Service), "app_gRPC-Server_stats")
+	span.End()
+	return res, err
+}
+
+func (h *healthServer) Watch(ctx *gofr.Context, in *healthpb.HealthCheckRequest, stream healthpb.Health_WatchServer) error {
+	start := time.Now()
+	span := ctx.Trace("/grpc.health.v1.Health/Watch")
+	err := h.Server.Watch(in, stream)
+	logger := gofrGRPC.NewgRPCLogger()
+	logger.DocumentRPCLog(ctx.Context, ctx.Logger, ctx.Metrics(), start, err,
+	fmt.Sprintf("/grpc.health.v1.Health/Watch	Service: %q", in.Service), "app_gRPC-Server_stats")
+	span.End()
+	return err
+}
+
+func (h *healthServer) SetServingStatus(ctx *gofr.Context, service string, servingStatus healthpb.HealthCheckResponse_ServingStatus) {
+	start := time.Now()
+	span := ctx.Trace("/grpc.health.v1.Health/SetServingStatus")
+	h.Server.SetServingStatus(service, servingStatus)
+	logger := gofrGRPC.NewgRPCLogger()
+	logger.DocumentRPCLog(ctx.Context, ctx.Logger, ctx.Metrics(), start, nil,
+	fmt.Sprintf("/grpc.health.v1.Health/SetServingStatus	Service: %q", service), "app_gRPC-Server_stats")
+	span.End()
+}
+
+func (h *healthServer) Shutdown(ctx *gofr.Context) {
+	start := time.Now()
+	span := ctx.Trace("/grpc.health.v1.Health/Shutdown")
+	h.Server.Shutdown()
+	logger := gofrGRPC.NewgRPCLogger()
+	logger.DocumentRPCLog(ctx.Context, ctx.Logger, ctx.Metrics(), start, nil,
+	"/grpc.health.v1.Health/Shutdown", "app_gRPC-Server_stats")
+	span.End()
+}
+
+func (h *healthServer) Resume(ctx *gofr.Context) {
+	start := time.Now()
+	span := ctx.Trace("/grpc.health.v1.Health/Resume")
+	h.Server.Resume()
+	logger := gofrGRPC.NewgRPCLogger()
+	logger.DocumentRPCLog(ctx.Context, ctx.Logger, ctx.Metrics(), start, nil,
+	"/grpc.health.v1.Health/Resume", "app_gRPC-Server_stats")
+	span.End()
+}
+`
+
+	clientHealthTemplate = `// Code generated by gofr.dev/cli/gofr. DO NOT EDIT.
+package {{ .Package }}
+
+import (
+	"fmt"
+	"sync"
+	"time"
+
+	"gofr.dev/pkg/gofr"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
+
+	gofrgRPC "gofr.dev/pkg/gofr/grpc"
+)
+
+var (
+	metricsOnce sync.Once
+	gRPCBuckets = []float64{0.005, 0.01, .05, .075, .1, .125, .15, .2, .3, .5, .75, 1, 2, 3, 4, 5, 7.5, 10}
+)
+
+type HealthClient interface {
+	Check(ctx *gofr.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error)
+	Watch(ctx *gofr.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (
+	grpc.ServerStreamingClient[grpc_health_v1.HealthCheckResponse], error)
+}
+
+type HealthClientWrapper struct {
+	client grpc_health_v1.HealthClient
+}
+
+func NewHealthClient(conn *grpc.ClientConn) HealthClient {
+	return &HealthClientWrapper{
+		client: grpc_health_v1.NewHealthClient(conn),
+	}
+}
+
+func createGRPCConn(host string, serviceName string) (*grpc.ClientConn, error) {
+	serviceConfig := ` + "`{\"loadBalancingPolicy\": \"round_robin\"}`" + `
+
+	conn, err := grpc.Dial(host,
+		grpc.WithDefaultServiceConfig(serviceConfig),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
 	return conn, nil
 }
 
-func New{{ .Service }}GoFrClient(host string, metrics metrics.Manager) (*{{ .Service }}ClientWrapper, error) {
-	conn, err := createGRPCConn(host)
-	if err != nil {
-		return &{{ .Service }}ClientWrapper{client: nil}, err
-	}
-	
-	gRPCBuckets := []float64{0.005, 0.01, .05, .075, .1, .125, .15, .2, .3, .5, .75, 1, 2, 3, 4, 5, 7.5, 10}
-	metrics.NewHistogram("app_gRPC-Client_stats", "Response time of gRPC client in milliseconds.", gRPCBuckets...)
-
-	res := New{{ .Service }}Client(conn)
-	return &{{ .Service }}ClientWrapper{
-		client: res,
-	}, nil
-}
-
-{{- range .Methods }}
-func (h *{{ $.Service }}ClientWrapper) {{ .Name }}(ctx *gofr.Context, req *{{ .Request }}) (*{{ .Response }}, error) {
-	span := ctx.Trace("gRPC-srv-call: {{ .Name }}")
+func invokeRPC(ctx *gofr.Context, rpcName string, rpcFunc func() (interface{}, error)) (interface{}, error) {
+	span := ctx.Trace("gRPC-srv-call: " + rpcName)
 	defer span.End()
 
 	traceID := span.SpanContext().TraceID().String()
@@ -234,59 +380,39 @@ func (h *{{ $.Service }}ClientWrapper) {{ .Name }}(ctx *gofr.Context, req *{{ .R
 	md := metadata.Pairs("x-gofr-traceid", traceID, "x-gofr-spanid", spanID)
 
 	ctx.Context = metadata.NewOutgoingContext(ctx.Context, md)
-
-	var header metadata.MD
-	
 	transactionStartTime := time.Now()
 
-	res, err := h.client.{{ .Name }}(ctx.Context, req, grpc.Header(&header))
-	if err != nil {
-		return nil, err
-	}
-
-	duration := time.Since(transactionStartTime)
-
-	ctx.Metrics().RecordHistogram(ctx, "app_gRPC-Client_stats", 
-									float64(duration.Milliseconds())+float64(duration.Nanoseconds()%1e6)/1e6, 
-									"gRPC_Service", "{{ $.Service }}", 
-									"method", "{{ .Name }}")
-
-	log := &RPCLog{}
-
-	if values, ok := header["log"]; ok && len(values) > 0 {
-		errUnmarshal := json.Unmarshal([]byte(values[0]), log)
-		if errUnmarshal != nil {
-			return nil, fmt.Errorf("error while unmarshaling: %v", errUnmarshal)
-		}
-	}
-
-	ctx.Logger.Info(log)
+	res, err := rpcFunc()
+	logger := gofrgRPC.NewgRPCLogger()
+	logger.DocumentRPCLog(ctx.Context, ctx.Logger, ctx.Metrics(), transactionStartTime, err,
+	rpcName, "app_gRPC-Client_stats")
 
 	return res, err
 }
 
-func (l RPCLog) PrettyPrint(writer io.Writer) {
-	fmt.Fprintf(writer, "\u001B[38;5;8m%s \u001B[38;5;%dm%-*d"+
-		"\u001B[0m %*d\u001B[38;5;8mµs\u001B[0m %s\n",
-		l.ID, colorForGRPCCode(l.StatusCode),
-		statusCodeWidth, l.StatusCode,
-		responseTimeWidth, l.ResponseTime,
-		l.Method)
+func (h *HealthClientWrapper) Check(ctx *gofr.Context, in *grpc_health_v1.HealthCheckRequest, 
+	opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	result, err := invokeRPC(ctx, fmt.Sprintf("/grpc.health.v1.Health/Check	Service: %q", in.Service), func() (interface{}, error) {
+		return h.client.Check(ctx, in, opts...)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return result.(*grpc_health_v1.HealthCheckResponse), nil
 }
 
-func colorForGRPCCode(s int32) int {
-	const (
-		blue = 34
-		red  = 202
-	)
+func (h *HealthClientWrapper) Watch(ctx *gofr.Context, in *grpc_health_v1.HealthCheckRequest, 
+	opts ...grpc.CallOption) (grpc.ServerStreamingClient[grpc_health_v1.HealthCheckResponse], error) {
+	result, err := invokeRPC(ctx, fmt.Sprintf("/grpc.health.v1.Health/Watch	Service: %q", in.Service), func() (interface{}, error) {
+		return h.client.Watch(ctx, in, opts...)
+	})
 
-	if s == 0 {
-		return blue
+	if err != nil {
+		return nil, err
 	}
 
-	return red
+	return result.(grpc.ServerStreamingClient[grpc_health_v1.HealthCheckResponse]), nil
 }
-
-{{- end }}
 `
 )

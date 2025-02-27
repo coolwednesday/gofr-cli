@@ -109,12 +109,13 @@ func generateWrapper(ctx *gofr.Context, options ...FileType) (any, error) {
 			Source:   path.Base(protoPath),
 		}
 
-		if err := generateFiles(ctx, projectPath, service.Name, wrapperData, requests, options...); err != nil {
+		if err := generateFiles(ctx, projectPath, service.Name, &wrapperData, requests, options...); err != nil {
 			return nil, err
 		}
 	}
 
 	ctx.Logger.Info("Successfully generated all files for GoFr integrated gRPC servers/clients")
+
 	return "Successfully generated all files for GoFr integrated gRPC servers/clients", nil
 }
 
@@ -128,6 +129,7 @@ func parseProtoFile(ctx *gofr.Context, protoPath string) (*proto.Proto, error) {
 	defer file.Close()
 
 	parser := proto.NewParser(file)
+
 	definition, err := parser.Parse()
 	if err != nil {
 		ctx.Logger.Errorf("Failed to parse proto file: %v", err)
@@ -138,13 +140,14 @@ func parseProtoFile(ctx *gofr.Context, protoPath string) (*proto.Proto, error) {
 }
 
 // generateFiles generates files for a given service.
-func generateFiles(ctx *gofr.Context, projectPath, serviceName string, wrapperData WrapperData, requests []string, options ...FileType) error {
+func generateFiles(ctx *gofr.Context, projectPath, serviceName string, wrapperData *WrapperData,
+	requests []string, options ...FileType) error {
 	for _, option := range options {
 		if option.FileSuffix == serverRequestFile {
 			wrapperData.Requests = requests
 		}
 
-		generatedCode := option.CodeGenerator(ctx, &wrapperData)
+		generatedCode := option.CodeGenerator(ctx, wrapperData)
 		if generatedCode == "" {
 			ctx.Logger.Errorf("Failed to generate code for service %s with file suffix %s", serviceName, option.FileSuffix)
 			return ErrGeneratingWrapper
@@ -187,6 +190,7 @@ func getRequests(ctx *gofr.Context, services []ProtoService) []string {
 	}
 
 	ctx.Logger.Debugf("Extracted unique request types: %v", requests)
+
 	return mapKeysToSlice(requests)
 }
 
@@ -201,6 +205,7 @@ func uniqueRequestTypes(ctx *gofr.Context, methods []ServiceMethod) []string {
 	}
 
 	ctx.Logger.Debugf("Extracted unique request types for methods: %v", requests)
+
 	return mapKeysToSlice(requests)
 }
 
@@ -210,6 +215,7 @@ func mapKeysToSlice(m map[string]bool) []string {
 	for key := range m {
 		keys = append(keys, key)
 	}
+
 	return keys
 }
 
@@ -226,7 +232,7 @@ func executeTemplate(ctx *gofr.Context, data *WrapperData, tmpl string) string {
 	return buf.String()
 }
 
-// Template generators
+// Template generators.
 func generateGoFrServerWrapper(ctx *gofr.Context, data *WrapperData) string {
 	return executeTemplate(ctx, data, wrapperTemplate)
 }
@@ -263,6 +269,7 @@ func getPackageAndProject(ctx *gofr.Context, definition *proto.Proto, protoPath 
 
 	projectPath = path.Dir(protoPath)
 	ctx.Logger.Debugf("Extracted package name: %s, project path: %s", packageName, projectPath)
+
 	return projectPath, packageName
 }
 
@@ -290,5 +297,6 @@ func getServices(ctx *gofr.Context, definition *proto.Proto) []ProtoService {
 	)
 
 	ctx.Logger.Debugf("Extracted services: %v", services)
+
 	return services
 }

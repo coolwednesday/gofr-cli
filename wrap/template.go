@@ -210,8 +210,8 @@ type {{ .Service }}ClientWrapper struct {
 	HealthClient
 }
 
-func New{{ .Service }}GoFrClient(host string, metrics metrics.Manager) ({{ .Service }}GoFrClient, error) {
-	conn, err := createGRPCConn(host, "{{ .Service }}")
+func New{{ .Service }}GoFrClient(host string, metrics metrics.Manager, dialOptions ...grpc.DialOption) ({{ .Service }}GoFrClient, error) {
+	conn, err := createGRPCConn(host, "{{ .Service }}", dialOptions...)
 	if err != nil {
 		return &{{ .Service }}ClientWrapper{
 			client:       nil,
@@ -396,15 +396,23 @@ func NewHealthClient(conn *grpc.ClientConn) HealthClient {
 	}
 }
 
-func createGRPCConn(host string, serviceName string) (*grpc.ClientConn, error) {
+func createGRPCConn(host string, serviceName string, dialOptions ...grpc.DialOption) (*grpc.ClientConn, error) {
 	serviceConfig := ` + "`{\"loadBalancingPolicy\": \"round_robin\"}`" + `
 
-	conn, err := grpc.Dial(host,
+	defaultOpts := []grpc.DialOption{
 		grpc.WithDefaultServiceConfig(serviceConfig),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+
+	// Developer Note: If the user provides custom DialOptions, they will override the default options due to the ordering of dialOptions.  
+	// This behavior is intentional to ensure the gRPC client connection is properly configured even when the user does not specify any DialOptions.
+	dialOptions = append(defaultOpts, dialOptions...)
+
+	conn, err := grpc.NewClient(host, dialOptions...)
 	if err != nil {
 		return nil, err
 	}
+
 	return conn, nil
 }
 

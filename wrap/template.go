@@ -367,8 +367,9 @@ func createGRPCConn(host string, serviceName string, dialOptions ...grpc.DialOpt
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
 
-	// Developer Note: If the user provides custom DialOptions, they will override the default options due to the ordering of dialOptions.  
-	// This behavior is intentional to ensure the gRPC client connection is properly configured even when the user does not specify any DialOptions.
+	// Developer Note: If the user provides custom DialOptions, they will override the default options due to 
+	// the ordering of dialOptions. This behavior is intentional to ensure the gRPC client connection is properly 
+	// configured even when the user does not specify any DialOptions.
 	dialOptions = append(defaultOpts, dialOptions...)
 
 	conn, err := grpc.NewClient(host, dialOptions...)
